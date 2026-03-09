@@ -1,0 +1,26 @@
+# --- Môi trường ảo ---
+venv/
+env/
+
+# --- File môi trường (Tuyệt đối không đẩy lên Git) ---
+.env
+
+# --- Database cục bộ ---
+db.sqlite3
+*.sqlite3
+
+# --- Cache của Python (Rác hệ thống) ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# --- Thư mục Media/Static (File người dùng upload lúc test) ---
+media/
+media_root/
+
+# --- Cấu hình của VS Code/IDE ---
+.vscode/
+.idea/
+*.swp
