@@ -24,3 +24,7 @@ media_root/
 .vscode/
 .idea/
 *.swp
+
+docx/
+
+cloudflared-windows-amd64.exe

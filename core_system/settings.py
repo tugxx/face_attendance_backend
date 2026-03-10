@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from decouple import config
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +29,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 AUTH_USER_MODEL = 'custom_account.UserModel'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -41,14 +42,21 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # --- Thư viện API & Auth ---
     'rest_framework',
-    'rest_framework_simplejwt',
+    'rest_framework.authtoken', 
+    'dj_rest_auth',             
+    'rest_framework_simplejwt', 
+
+    'corsheaders',
 
     'custom_account',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -56,6 +64,39 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+# Cấu hình Django REST Framework sử dụng JWT làm phương thức xác thực mặc định
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'DATETIME_FORMAT': "%Y-%m-%d %H:%M:%S",
+    'USE_TZ': True,
+    'EXCEPTION_HANDLER': 'core.exception_handlers.custom_exception_handler'
+}
+
+# Bật chế độ JWT cho dj-rest-auth
+REST_AUTH = {
+    'USE_JWT': True,
+
+    'JWT_AUTH_COOKIE': 'access_token',       
+    'JWT_AUTH_REFRESH_COOKIE': 'refresh_token', 
+    # 'JWT_AUTH_HTTPONLY': True, 
+    
+    # 'JWT_SERIALIZER': 'custom_account.serializers.CookieOnlyJWTSerializer',
+}
+
+# 3. Cấu hình tuổi thọ Token
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1000), # Lúc dev bạn có thể để days=1 cho đỡ phải login lại nhiều
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
 
 ROOT_URLCONF = 'core_system.urls'
 

@@ -1,4 +1,12 @@
-from pydantic import BaseModel
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict
+from datetime import datetime
+from typing import Optional
+
+from custom_account.api.dtos.biometric_dto import BiometricSyncOutput
+from custom_account.api.dtos.profile_dto import ProfileSyncOutput
+
+
 
 class UserInput(BaseModel):
     username: str
@@ -9,3 +17,60 @@ class UserInput(BaseModel):
 
     def to_dict(self, exclude_none: bool = True) -> dict:
         return self.model_dump(exclude_none=exclude_none)
+
+
+class UserPublicOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    username: str
+    email: str
+    created_on: datetime | None = None
+    phone: str | None
+
+    def to_dict(self, exclude_none: bool = True) -> dict:
+        """
+        Convert the model to a dictionary.
+        
+        Args:
+            exclude_none (bool): Whether to exclude keys with None values. Defaults to True.
+        
+        Returns:
+            dict: A dictionary representation of the model.
+        """
+        return self.model_dump(exclude_none=exclude_none)
+
+class UserAdminOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    username: str
+    email: str
+    created_on: Optional[datetime] = None
+    updated_on: Optional[datetime] = None
+    phone: str | None
+    role: str
+    is_active: bool
+
+    def to_dict(self, exclude_none: bool = True) -> dict:
+        """
+        Convert the model to a dictionary.
+        
+        Args:
+            exclude_none (bool): Whether to exclude keys with None values. Defaults to True.
+        
+        Returns:
+            dict: A dictionary representation of the model.
+        """
+        return self.model_dump(exclude_none=exclude_none)
+    
+
+class UserSyncOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID | str
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    updated_on: datetime
+    profile: ProfileSyncOutput | None = None
+    biometric: BiometricSyncOutput | None = None

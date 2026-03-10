@@ -89,7 +89,9 @@ class BiometricCredential(models.Model):
     
     face_vector_1 = models.JSONField(blank=True, null=True, help_text="Vector khuôn mặt chính (128 hoặc 512 chiều)")
     face_vector_2 = models.JSONField(blank=True, null=True, help_text="Vector dự phòng (đeo kính, v.v.)")
-    
+    face_vector_3 = models.JSONField(blank=True, null=True, help_text="Vector mặt trái (nếu có)")
+    face_vector_4 = models.JSONField(blank=True, null=True, help_text="Vector mặt phải (nếu có)")
+
     is_active = models.BooleanField(default=True, help_text="Khóa thẻ/mặt nếu báo mất")
     updated_at = models.DateTimeField(auto_now=True)
 
