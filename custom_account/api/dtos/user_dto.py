@@ -3,9 +3,6 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 
-from custom_account.api.dtos.biometric_dto import BiometricSyncOutput
-from custom_account.api.dtos.profile_dto import ProfileSyncOutput
-
 
 
 class UserInput(BaseModel):
@@ -63,14 +60,3 @@ class UserAdminOutput(BaseModel):
         """
         return self.model_dump(exclude_none=exclude_none)
     
-
-class UserSyncOutput(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID | str
-    username: str
-    email: str
-    role: str
-    is_active: bool
-    updated_on: datetime
-    profile: ProfileSyncOutput | None = None
-    biometric: BiometricSyncOutput | None = None

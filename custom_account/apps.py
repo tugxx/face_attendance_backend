@@ -2,4 +2,9 @@ from django.apps import AppConfig
 
 
 class CustomAccountConfig(AppConfig):
-    name = 'custom_account'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "custom_account"
+
+    def ready(self):
+        # Import file signals khi App khởi động
+        pass

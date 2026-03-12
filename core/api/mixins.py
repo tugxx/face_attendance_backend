@@ -1,9 +1,12 @@
-import logging
-from pydantic import BaseModel
-from typing import Type, Any, Optional
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models.query import QuerySet
+from pydantic import BaseModel
+from rest_framework import status
 from rest_framework.exceptions import APIException
+from rest_framework.response import Response
 from rest_framework.views import APIView
+from typing import Type, Any, Optional
+import logging
 
 
 
@@ -123,3 +126,69 @@ class RoleBasedOutputMixin:
         # Gọi hàm finalize_response gốc của APIView
         return APIView.finalize_response(self, request, response, *args, **kwargs)
     
+
+class PaginationMixin:
+    """
+    Mixin hỗ trợ phân trang chuẩn cho API.
+    Tự động lấy `page` và `page_size` từ Query Params.
+    """
+    default_page_size = 20
+    max_page_size = 100
+
+    def paginate_queryset(self, queryset_or_list, request) -> dict:
+        """
+        Hàm core: Nhận vào QuerySet/List -> Trả về Dict cấu trúc chuẩn.
+        """
+        # 1. Lấy tham số từ URL
+        try:
+            page_number = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', self.default_page_size))
+        except (ValueError, TypeError):
+            page_number = 1
+            page_size = self.default_page_size
+
+        # Limit max size để tránh user request 1 triệu record
+        if page_size > self.max_page_size:
+            page_size = self.max_page_size
+
+        # 2. Paginator của Django
+        paginator = Paginator(queryset_or_list, page_size)
+
+        try:
+            page_obj = paginator.page(page_number)
+        except PageNotAnInteger:
+            page_obj = paginator.page(1)
+        except EmptyPage:
+            # Nếu page > total_pages -> Trả về trang cuối hoặc list rỗng (tuỳ style)
+            # Ở đây ta trả về list rỗng để FE dễ xử lý
+            return {
+                "items": [],
+                "meta": {
+                    "total_count": paginator.count,
+                    "page": page_number,
+                    "page_size": page_size,
+                    "total_pages": paginator.num_pages,
+                    "has_next": False,
+                    "has_previous": False,
+                }
+            }
+
+        # 3. Trả về cấu trúc chuẩn
+        return {
+            "items": page_obj.object_list, # List các object (Model/Domain)
+            "meta": {
+                "total_count": paginator.count,
+                "page": page_number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "has_next": page_obj.has_next(),
+                "has_previous": page_obj.has_previous(),
+            }
+        }
+
+    def get_paginated_response(self, data: dict) -> Response:
+        """
+        Helper để wrap vào DRF Response (200 OK).
+        Dùng khi View trả về trực tiếp (không qua RoleBasedOutputMixin).
+        """
+        return Response(data, status=status.HTTP_200_OK)

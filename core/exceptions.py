@@ -3,6 +3,7 @@ class DomainError(Exception):
     Base class cho tất cả các exception thuộc về nghiệp vụ (Domain) của dự án.
     Giúp phân biệt lỗi của Python (KeyError, IndexError) và lỗi do logic app.
     """
+
     pass
 
 
@@ -11,8 +12,14 @@ class DomainError(Exception):
 # Thường map về HTTP 404 Not Found
 # =============================================================================
 
+
 class ResourceNotFound(DomainError):
     """Base class cho các lỗi không tìm thấy dữ liệu."""
+
+    pass
+
+
+class UserNotFoundError(Exception):
     pass
 
 
@@ -21,12 +28,16 @@ class ResourceNotFound(DomainError):
 # Thường map về HTTP 400 Bad Request hoặc 403 Forbidden
 # =============================================================================
 
+
 class BusinessLogicError(DomainError):
     """Base class cho các lỗi vi phạm quy tắc nghiệp vụ."""
+
     pass
+
 
 class DomainValidationError(BusinessLogicError):
     """Lỗi khi validate dữ liệu đầu vào không thỏa mãn logic domain."""
+
     pass
 
 
@@ -35,8 +46,8 @@ class DomainValidationError(BusinessLogicError):
 # Thường map về HTTP 403 Forbidden
 # =============================================================================
 
+
 class AccessDeniedError(DomainError):
     """Base class cho các lỗi từ chối truy cập."""
+
     pass
-
-

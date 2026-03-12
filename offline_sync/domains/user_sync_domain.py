@@ -3,8 +3,8 @@ from datetime import datetime, date
 from uuid import UUID
 
 from custom_account.models import UserModel
-from custom_account.domains.profile_domain import ProfileSyncDomain
-from custom_account.domains.biometric_domain import BiometricSyncDomain
+from offline_sync.domains.profile_sync_domain import ProfileSyncDomain
+from offline_sync.domains.biometric_sync_domain import BiometricSyncDomain
 
 
 

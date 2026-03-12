@@ -63,7 +63,7 @@ class Profile(models.Model):
     # --- Basic Info ---
     display_name = models.CharField(max_length=150, blank=True, null=True)
     avatar_id = models.TextField(blank=True, null=True) 
-    dob = models.DateField(blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
     gender = models.CharField(
         max_length=16,
         choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')],
@@ -84,13 +84,24 @@ class Profile(models.Model):
 class BiometricCredential(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True, related_name='biometric')
     
+    # Dùng để quét thẻ
     rfid_card_id = models.CharField(max_length=50, blank=True, null=True, unique=True, help_text="Mã thẻ cứng RFID")
+    
+    # Dùng để quét QR động (nếu có)
     qr_code_secret = models.CharField(max_length=100, blank=True, null=True, help_text="Mã bí mật tạo QR động")
     
-    face_vector_1 = models.JSONField(blank=True, null=True, help_text="Vector khuôn mặt chính (128 hoặc 512 chiều)")
-    face_vector_2 = models.JSONField(blank=True, null=True, help_text="Vector dự phòng (đeo kính, v.v.)")
-    face_vector_3 = models.JSONField(blank=True, null=True, help_text="Vector mặt trái (nếu có)")
-    face_vector_4 = models.JSONField(blank=True, null=True, help_text="Vector mặt phải (nếu có)")
+    face_embeddings = models.JSONField(
+        default=list, # Mặc định là một danh sách rỗng []
+        blank=True,
+        help_text="""
+        Danh sách các vector khuôn mặt. Định dạng chuẩn:
+        [
+            {"type": "primary", "vector": [0.12, -0.45, ...]},
+            {"type": "with_glasses", "vector": [0.11, -0.42, ...]},
+            {"type": "left_side", "vector": [0.08, -0.50, ...]}
+        ]
+        """
+    )
 
     is_active = models.BooleanField(default=True, help_text="Khóa thẻ/mặt nếu báo mất")
     updated_at = models.DateTimeField(auto_now=True)

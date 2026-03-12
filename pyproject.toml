@@ -1,0 +1,29 @@
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+exclude = [
+    "migrations",
+    "venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+]
+
+ignore = [
+    "E501"
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
