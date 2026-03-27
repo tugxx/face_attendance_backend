@@ -23,6 +23,10 @@ class UserNotFoundError(Exception):
     pass
 
 
+class AttendanceLogNotFound(Exception):
+    pass
+
+
 # =============================================================================
 # 2. NHÓM LỖI LOGIC & VALIDATION (BUSINESS LOGIC ERRORS)
 # Thường map về HTTP 400 Bad Request hoặc 403 Forbidden

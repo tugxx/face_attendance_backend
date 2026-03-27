@@ -1,0 +1,41 @@
+services:
+  # Trạm trung chuyển Redis cho WebSocket và Cache
+  redis:
+    image: redis:alpine
+    container_name: attendance_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    # command: redis-server --requirepass your_password # Mở dòng này nếu muốn cài pass cho Redis
+
+  # 2. Nhân viên chạy ngầm Celery
+  celery:
+    build: .  # Đọc file Dockerfile ở trên để xây dựng môi trường Python
+    container_name: attendance_celery
+    # Lệnh chạy Celery (Linux không cần chữ --pool=solo như Windows)
+    command: celery -A core_system worker -l info
+    volumes:
+      # Ánh xạ toàn bộ thư mục code hiện tại vào thẳng thư mục /app trong Docker
+      # (Để khi bạn sửa code ở ngoài, Celery trong Docker tự nhận code mới luôn!)
+      - .:/app
+
+    environment:
+      # Cực kỳ quan trọng: Ép Celery kết nối với Redis qua mạng nội bộ của Docker
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # ⚠️ CHÚ Ý: Nếu Database PostgreSQL của bạn đang cài trực tiếp trên Windows (localhost)
+      # thì bạn phải trỏ DB_HOST về host.docker.internal để Docker tìm được máy tính của bạn
+      - DB_HOST=host.docker.internal 
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT:-5432}
+
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:
+  pg_data:

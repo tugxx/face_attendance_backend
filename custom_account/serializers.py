@@ -1,8 +1,7 @@
 from rest_framework import serializers
 
 from custom_account.domains.user_domain import UserDomain
-from custom_account.models import UserModel, Profile, BiometricCredential
-
+from custom_account.models import BiometricCredential, Profile, UserModel
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -11,8 +10,7 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
     # UPDATE: Thêm các role của hệ thống quản lý trường học
     role = serializers.ChoiceField(
-        choices=["student", "teacher", "parent", "driver", "admin"], 
-        default="student"
+        choices=["student", "teacher", "parent", "driver", "admin"], default="student"
     )
     phone = serializers.CharField(max_length=15, required=False)
 
@@ -20,7 +18,7 @@ class RegisterSerializer(serializers.Serializer):
         """Convert validated data into a UserDomain object"""
         # Giả định bạn đã import UserDomain
         return UserDomain(**self.validated_data)
-    
+
 
 class UserSerializer(serializers.ModelSerializer):
     username = serializers.CharField(max_length=150)
@@ -31,10 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserModel
-        fields = [
-            "id", "username", "email", "is_active",
-            "phone", "created_on", "role"
-        ]
+        fields = ["id", "username", "email", "is_active", "phone", "created_on", "role"]
         read_only_fields = ["id", "created_on"]
 
     def get_fields(self):
@@ -48,7 +43,7 @@ class UserSerializer(serializers.ModelSerializer):
             fields["is_active"].read_only = True
 
         return fields
-    
+
     def to_domain(self) -> UserDomain:
         """Convert serializer data -> UserDomain."""
         return UserDomain.from_dict(self.validated_data)
@@ -57,44 +52,64 @@ class UserSerializer(serializers.ModelSerializer):
     def from_domain(domain: UserDomain) -> dict:
         """Convert UserDomain -> dict (API response)."""
         return domain.to_dict()
-    
+
     def to_representation(self, instance):
         # Nếu instance là UserDomain, convert sang dict
         if isinstance(instance, UserDomain):
             return {
-                'id': instance.id,
-                'username': instance.username,
-                'email': instance.email,
-                'role': instance.role,
-                'created_on': instance.created_on,
-                'phone': instance.phone,
+                "id": instance.id,
+                "username": instance.username,
+                "email": instance.email,
+                "role": instance.role,
+                "created_on": instance.created_on,
+                "phone": instance.phone,
             }
         return super().to_representation(instance)
-    
 
-class CookieOnlyJWTSerializer(serializers.Serializer):
-    """
-    Serializer này cố tình không khai báo trường 'access' và 'refresh'.
-    Khi dj_rest_auth ném data vào đây, nó sẽ tự động lọc bỏ 2 token đó, 
-    chỉ giữ lại cục 'user' để in ra màn hình.
-    """
-    user = UserSerializer(read_only=True)
+
+class CustomUserDetailsSerializer(serializers.ModelSerializer):
+    # Nếu muốn lấy thêm display_name từ bảng Profile (vì UserModel của bạn tách riêng Profile)
+    display_name = serializers.CharField(source="profile.display_name", read_only=True)
+    identity_code = serializers.CharField(
+        source="profile.identity_code", read_only=True
+    )
+
+    class Meta:
+        model = UserModel
+        # Đổi chữ 'pk' thành 'id' cho Frontend dễ làm việc, cộng thêm các trường cần thiết
+        fields = (
+            "id",
+            "username",
+            "email",
+            "role",
+            "phone",
+            "display_name",
+            "identity_code",
+        )
+
 
 # ----------------------------------------------------
-#   SYNC DATA 
+#   SYNC DATA
 # ----------------------------------------------------
+
 
 class BiometricSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = BiometricCredential
         # Chỉ lấy những trường cần thiết cho việc nhận diện offline
-        fields = ['rfid_card_id', 'face_vector_1', 'face_vector_2', 'is_active', 'updated_at']
+        fields = [
+            "rfid_card_id",
+            "face_vector_1",
+            "face_vector_2",
+            "is_active",
+            "updated_at",
+        ]
 
 
 class ProfileSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['display_name', 'avatar_id', 'dob', 'gender', 'updated_at']
+        fields = ["display_name", "avatar_id", "dob", "gender", "updated_at"]
 
 
 class UserSyncSerializer(serializers.ModelSerializer):
@@ -105,7 +120,14 @@ class UserSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserModel
         fields = [
-            'id', 'username', 'email', 'role', 'phone', 
-            'is_active', 'created_on', 'updated_on', 
-            'profile', 'biometric'
+            "id",
+            "username",
+            "email",
+            "role",
+            "phone",
+            "is_active",
+            "created_on",
+            "updated_on",
+            "profile",
+            "biometric",
         ]

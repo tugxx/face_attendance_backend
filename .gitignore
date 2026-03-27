@@ -1,6 +1,7 @@
 # --- Môi trường ảo ---
 venv/
 env/
+venv311/
 
 # --- File môi trường (Tuyệt đối không đẩy lên Git) ---
 .env
@@ -19,6 +20,7 @@ __pycache__/
 # --- Thư mục Media/Static (File người dùng upload lúc test) ---
 media/
 media_root/
+tmp_extract_data/
 
 # --- Cấu hình của VS Code/IDE ---
 .vscode/
@@ -30,3 +32,6 @@ docx/
 cloudflared-windows-amd64.exe
 
 face-attendance-9b627-firebase-adminsdk-fbsvc-43d79c7008.json
+
+tools/management/data 
+tools/management/models

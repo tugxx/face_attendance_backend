@@ -1,8 +1,23 @@
-from django.urls import re_path
+from django.urls import path
 
-from . import consumers
+from offline_sync.api.views.attendance_view import (
+    PushAttendanceBulkView,
+    PushAttendanceImageView,
+)
+from offline_sync.api.views.sync_view import PullUsersSyncView
 
-websocket_urlpatterns = [
-    # App Flutter sẽ connect vào địa chỉ: ws://domain.com/ws/sync/
-    re_path(r"ws/sync/$", consumers.SyncConsumer.as_asgi()),
+urlpatterns = [
+    # 1. Luồng KÉO (Pull): Lấy dữ liệu từ Server về Tablet
+    path("users/pull", PullUsersSyncView.as_view(), name="sync_pull_users"),
+    # 2. Luồng ĐẨY (Push): Đẩy dữ liệu từ Tablet lên Server
+    path(
+        "attendance/push-bulk",
+        PushAttendanceBulkView.as_view(),
+        name="sync_push_attendance_bulk",
+    ),
+    path(
+        "attendance/push-image/<uuid:log_id>",
+        PushAttendanceImageView.as_view(),
+        name="sync_push_attendance_image",
+    ),
 ]

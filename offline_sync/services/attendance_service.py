@@ -1,12 +1,15 @@
-from typing import List, Dict, Any
+import logging
 
 from custom_account.models import UserModel
-from offline_sync.models import AttendanceLog 
 from offline_sync.api.dtos.attendance_dto import OfflineAttendanceUploadInput
+from offline_sync.models import AttendanceLog
+
+logger = logging.getLogger(__name__)
 
 
-
-def process_offline_attendance_logs(input_dto: OfflineAttendanceUploadInput) -> Dict[str, int]:
+def process_offline_attendance_logs(
+    input_dto: OfflineAttendanceUploadInput,
+) -> dict[str, int]:
     """
     Nhận mảng DTO logs, validate tồn tại và insert hàng loạt vào DB.
     Trả về thống kê số lượng bản ghi đã xử lý.
@@ -18,14 +21,16 @@ def process_offline_attendance_logs(input_dto: OfflineAttendanceUploadInput) -> 
     # 1. BULK VALIDATION (Giải quyết N+1 Query)
     # ---------------------------------------------------------
     # Lấy ra một set (tập hợp) các user_id duy nhất từ cục JSON
-    incoming_user_ids = {log['user_id'] for log in input_dto.logs}
-    
+    incoming_user_ids = {log["user_id"] for log in input_dto.logs}
+
     # Chỉ gọi đúng 1 câu SQL SELECT để lấy các ID hợp lệ đang có trong DB
     # values_list('id', flat=True) giúp trả về mảng ID thuần túy, tốn cực ít RAM
     valid_user_ids = set(
-        UserModel.objects.filter(id__in=incoming_user_ids, is_active=True)
-        .values_list('id', flat=True)
+        UserModel.objects.filter(id__in=incoming_user_ids, is_active=True).values_list(
+            "id", flat=True
+        )
     )
+    user_map = {username: db_id for username, db_id in valid_user_ids}
 
     # ---------------------------------------------------------
     # 2. PREPARE MODEL INSTANCES (Gom data trên RAM)
@@ -35,7 +40,8 @@ def process_offline_attendance_logs(input_dto: OfflineAttendanceUploadInput) -> 
 
     for log in input_dto.logs:
         # So sánh UUID trực tiếp, không tốn tài nguyên convert sang chuỗi (String)
-        if log.user_id not in valid_user_ids:
+        db_user_id = user_map.get(log.user_id)
+        if not db_user_id:
             ignored_count += 1
             continue
 
@@ -43,12 +49,13 @@ def process_offline_attendance_logs(input_dto: OfflineAttendanceUploadInput) -> 
         # Đây là trick giúp tiết kiệm thêm hàng chục mili-giây
         attendance_log = AttendanceLog(
             id=log.id,
-            user_id=log.user_id, 
+            user_id=db_user_id,
             device_id=input_dto.device_id,
             check_in_time=log.check_in_time,
             method=log.method,
             confidence_score=log.confidence_score,
-            is_offline_log=log.is_offline_log
+            liveness_score=log.liveness_score,
+            is_offline_log=log.is_offline_log,
         )
         logs_to_insert.append(attendance_log)
 
@@ -57,17 +64,31 @@ def process_offline_attendance_logs(input_dto: OfflineAttendanceUploadInput) -> 
     # ---------------------------------------------------------
     inserted_count = 0
     if logs_to_insert:
-        # ignore_conflicts=True: 
-        # Nếu DB đã có log này rồi (nhờ set unique_together = ['user', 'check_in_time'] ở Model), 
+        # ignore_conflicts=True:
+        # Nếu DB đã có log này rồi (nhờ set unique_together = ['user', 'check_in_time'] ở Model),
         # PostgreSQL/SQLite/MySQL sẽ bỏ qua bản ghi đó, không báo lỗi IntegrityError.
         created_logs = AttendanceLog.objects.bulk_create(
             logs_to_insert,
-            batch_size=500, # Nếu có 2000 log, tự cắt ra 4 gói 500 để không làm tràn bộ đệm SQL
-            ignore_conflicts=True 
+            batch_size=500,  # Nếu có 2000 log, tự cắt ra 4 gói 500 để không làm tràn bộ đệm SQL
+            ignore_conflicts=True,
         )
         inserted_count = len(created_logs)
 
-    return {
-        "inserted": inserted_count,
-        "invalid_users_ignored": ignored_count
-    }
+    return {"inserted": inserted_count, "invalid_users_ignored": ignored_count}
+
+
+def upload_evidence_image(log_id: str, image_file) -> None:
+    """
+    Xử lý logic lưu ảnh bằng chứng.
+    Sẽ ném AttendanceLog.DoesNotExist nếu không tìm thấy.
+    """
+    # 1. Tìm bản ghi (Tự động ném DoesNotExist nếu sai ID)
+    log_instance = AttendanceLog.objects.get(id=log_id)
+
+    # 2. Bỏ qua nếu đã có ảnh
+    if log_instance.evidence_image:
+        return
+
+    # 3. Lưu ảnh
+    file_name = f"evidence_{log_id}.jpg"
+    log_instance.evidence_image.save(file_name, image_file, save=True)

@@ -6,5 +6,5 @@ class CustomAccountConfig(AppConfig):
     name = "custom_account"
 
     def ready(self):
-        # Import file signals khi App khởi động
-        pass
+        # Thêm noqa: F401 để tắt cảnh báo "Unused import" của Ruff/Flake8
+        import custom_account.signals  # noqa: F401
