@@ -1,3 +1,5 @@
+import os
+
 import ai_edge_litert.interpreter as tflite
 import cv2
 import numpy as np
@@ -7,26 +9,33 @@ from insightface.app import FaceAnalysis
 
 
 class FaceEmbedderTFLite:
+    """
+    Core AI Engine for Face Detection and Feature Extraction.
+    - Detector: InsightFace SCRFD (CPU)
+    - Extractor: Custom TFLite Model (e.g., MobileFaceNet)
+    """
+
     def __init__(self, model_path):
-        # 1. Load model TFLite
+        # 1. AI Metadata
+        self.detector_name = "insightface_scrfd"
+        self.extractor_name = os.path.basename(model_path).replace(".tflite", "")
+
+        # 2. Initialize Feature Extractor (TFLite)
         self.interpreter = tflite.Interpreter(model_path=model_path)
         self.interpreter.allocate_tensors()
-
         self.input_details = self.interpreter.get_input_details()
         self.output_details = self.interpreter.get_output_details()
-
         self.input_shape = self.input_details[0]["shape"]
         self.input_dtype = self.input_details[0]["dtype"]
 
-        # 2. KHỞI TẠO INSIGHTFACE (Mô hình SCRFD)
-        # allowed_modules=['detection']: Chỉ load mô hình dò mặt để lấy Bounding Box và 5 Landmarks
-        # providers: Dùng CPU. Nếu server bạn có GPU Nvidia, đổi thành ['CUDAExecutionProvider']
+        # 3. Initialize Face Detector (InsightFace)
         self.face_app = FaceAnalysis(
             allowed_modules=["detection"], providers=["CPUExecutionProvider"]
         )
-
-        # det_size=(640, 640) là độ phân giải nội bộ chuẩn của SCRFD, bắt mặt nhỏ cực tốt
         self.face_app.prepare(ctx_id=0, det_size=(640, 640))
+
+        # Internal state
+        self.last_cropped_face = None
 
     # def process_image(self, image_path):
     #     """Đọc ảnh và trả về mảng vector (List[float])"""
@@ -78,9 +87,30 @@ class FaceEmbedderTFLite:
     #     return self._l2_normalize(raw_embedding).tolist()
 
     def process_image(self, img_input):
-        # 0. BỘ LỌC ĐẦU VÀO ĐA NĂNG
+        """
+        Executes the complete face processing pipeline.
+
+        Pipeline Flow:
+        1. Input Validation: Accepts file path (str) or image matrix (np.ndarray). Handles Unicode paths safely.
+        2. Quality Check: Rejects images smaller than 60x60px.
+        3. Dynamic Rescaling: Downscales oversized images (>1280px) to prevent memory exhaustion,
+           then calculates optimal dimensions (multiples of 32) for the SCRFD detector.
+        4. Face Detection: Extracts bounding boxes and landmarks.
+        5. Filtering: Discards faces smaller than 9% of the image width. Selects the largest valid face.
+        6. State Saving: Crops and stores the raw BGR face image in `self.last_cropped_face` for external FIQA use.
+        7. Alignment & Normalization: Aligns the face using 2-point affine transform (matching C++ logic).
+        8. Feature Extraction: Runs the TFLite model and applies L2 Normalization.
+
+        Args:
+            img_input (str or np.ndarray): Image file path or BGR image array.
+            is_pre_cropped (bool): (Reserved/Unused) Flag for pre-cropped faces.
+
+        Returns:
+            list[float] or None: A 1D list representing the L2-normalized feature vector, or None if processing fails.
+        """
+        self.last_cropped_face = None
+
         if isinstance(img_input, str):
-            # Nếu đầu vào là đường dẫn (string), dùng cách đọc chống lỗi Unicode
             try:
                 with open(img_input, "rb") as f:
                     img_bytes = f.read()
@@ -93,7 +123,6 @@ class FaceEmbedderTFLite:
             except Exception:
                 return None
         elif isinstance(img_input, np.ndarray):
-            # Nếu đầu vào đã là ma trận ảnh (từ file seed truyền vào), dùng luôn
             img_bgr = img_input.copy()
         else:
             return None
@@ -103,7 +132,6 @@ class FaceEmbedderTFLite:
 
         height, width, _ = img_bgr.shape
         if height < 60 or width < 60:
-            # Ném thẳng lỗi để nó lọt vào vòng except "Lỗi hệ thống" in ra màn hình
             raise ValueError(
                 f"Ảnh quá nhỏ ({width}x{height}px), không đủ tiêu chuẩn nhận diện."
             )
@@ -113,11 +141,10 @@ class FaceEmbedderTFLite:
             scale = 1280 / max_dim
             new_width = int(width * scale)
             new_height = int(height * scale)
-            # Dùng INTER_AREA để resize ảnh nhỏ lại giữ chi tiết tốt nhất
             img_bgr = cv2.resize(
                 img_bgr, (new_width, new_height), interpolation=cv2.INTER_AREA
             )
-            height, width = img_bgr.shape[:2]  # Cập nhật lại width/height mới
+            height, width = img_bgr.shape[:2]
 
         max_limit = 640
         im_ratio = float(width) / height
@@ -129,22 +156,18 @@ class FaceEmbedderTFLite:
             new_height = max_limit
             new_width = int(new_height * im_ratio)
 
-        # Ép về bội số của 32 để tránh lỗi "Broadcast shape (18,) (32,)"
         det_width = int(np.round(new_width / 32.0) * 32)
         det_height = int(np.round(new_height / 32.0) * 32)
 
-        # Chạy InsightFace nhưng không dùng __init__ mặc định mà chèn det_size toán học này vào!
-        # Điều này thay thế cho cái det_size tĩnh lúc đầu
         self.face_app.det_model.input_size = (det_width, det_height)
-        print("det", det_width, det_height)
         faces = self.face_app.get(img_bgr)
 
         if not faces:
             return None
 
-        # 1. Lọc mặt nhỏ 10% y hệt Dart
         min_face_width = width * 0.09
         valid_faces = [f for f in faces if (f.bbox[2] - f.bbox[0]) >= min_face_width]
+
         if not valid_faces:
             biggest = max([(f.bbox[2] - f.bbox[0]) for f in faces])
             print(
@@ -153,68 +176,92 @@ class FaceEmbedderTFLite:
             return None
 
         largest_face = max(
-            valid_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1])
+            valid_faces,
+            key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
         )
 
-        # # 2. Lấy 2 mắt từ InsightFace
-        # # kps: 0: left_eye, 1: right_eye
-        # eye_l = largest_face.kps[0]
-        # eye_r = largest_face.kps[1]
+        box = largest_face.bbox.astype(int)
+        x1, y1 = max(0, box[0]), max(0, box[1])
+        x2, y2 = min(width, box[2]), min(height, box[3])
 
-        # 3. CHẠY THUẬT TOÁN 2 ĐIỂM Y HỆT C++ (Dùng Numpy để nhanh)
+        self.last_cropped_face = img_bgr[y1:y2, x1:x2]
+        self.last_kps = largest_face.kps
+
         input_data = self._align_and_normalize_face_sync_mobile(
             img_bgr, largest_face.kps
         )
 
-        # 4. Chạy TFLite
         self.interpreter.set_tensor(self.input_details[0]["index"], input_data)
         self.interpreter.invoke()
-        return self._l2_normalize(
-            self.interpreter.get_tensor(self.output_details[0]["index"])[0]
-        ).tolist()
+
+        raw_vector = self.interpreter.get_tensor(self.output_details[0]["index"])[0]
+        return self._l2_normalize(raw_vector).tolist()
 
     def _align_and_normalize_face_sync_mobile(self, img_bgr, kps):
         """
-        Đồng bộ 100% với hàm process_file_affine_raw trong C++
-        Sử dụng đúng REF_X, REF_Y và thuật toán 2 điểm mắt.
+        Thực hiện xoay, cắt và chuẩn hóa khuôn mặt (Face Alignment) đồng bộ 100%
+        với thuật toán `process_file_affine_raw` trên C++ (Edge Device).
+
+        Luồng thuật toán (2-Point Affine Transform):
+
+        1. Lấy tọa độ gốc: Trích xuất tọa độ (x, y) của mắt trái và mắt phải từ Keypoints.
+
+        2. Tính thông số ảnh gốc (Source):
+           - Tâm xoay (Center): Trung bình cộng tọa độ của hai mắt.
+           - Khoảng cách (Distance): Chiều dài đoạn thẳng nối hai mắt (Định lý Pytago).
+           - Góc nghiêng (Angle): Tính bằng hàm arctan2 dựa trên độ chênh lệch y và x của 2 mắt.
+
+        3. Tính thông số ảnh đích (Destination) dựa trên bộ tham số nội bộ:
+           - Tọa độ mắt chuẩn (REF_X): 38.2946 (trái) và 73.5318 (phải).
+           - Tọa độ mắt chuẩn (REF_Y): 51.6963 (cả hai mắt nằm ngang nhau).
+           - Tỷ lệ nội suy (Scale): Bằng khoảng cách 2 mắt đích chia cho khoảng cách 2 mắt gốc.
+
+        4. Xây dựng Ma trận nghịch đảo (Inverse Matrix):
+           - Tính toán bộ 6 hệ số [A, B, C, D, E, F] từ việc nghịch đảo ma trận xoay và tịnh tiến.
+           - Mục đích: Để quét từng điểm ảnh trên khung 112x112 đích và tra ngược về vị trí tương ứng trên ảnh gốc.
+
+        5. Nội suy Nearest-Neighbor (Mô phỏng ép kiểu C++):
+           - Dùng ma trận lưới (Grid) 112x112 nhân với ma trận nghịch đảo để tìm tọa độ nguồn.
+           - Ép kiểu mảng về số nguyên int32. Việc này mô phỏng chính xác thao tác ngắt bỏ phần thập phân
+             (truncation) của biến `(int)` trong C++, giúp vector trích xuất ra hoàn toàn khớp với thiết bị.
+
+        6. Chuẩn hóa Tensor:
+           - Lấy giá trị từng pixel (0-255) trừ đi 127.5, sau đó chia cho 128.0 để dải giá trị nằm trong khoảng [-1.0, 1.0].
+
+        Args:
+            img_bgr (np.ndarray): Ma trận ảnh gốc hệ màu BGR (đọc từ OpenCV).
+            kps (np.ndarray): Mảng 5 điểm mốc (Landmarks) từ InsightFace, trong đó index 0, 1 là 2 mắt.
+
+        Returns:
+            np.ndarray: Tensor kích thước (1, 112, 112, 3) dạng float32, sẵn sàng nạp thẳng vào TFLite.
         """
-        # 1. Chuyển sang RGB (Vì TFLite nhận RGB)
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         height, width, _ = img_rgb.shape
 
-        # 2. Lấy tọa độ 2 mắt từ Keypoints của InsightFace
-        # Index 0: Mắt trái, Index 1: Mắt phải
-        eye_l = kps[0]
-        eye_r = kps[1]
+        eye_l, eye_r = kps[0], kps[1]
 
-        # 3. Tính toán tâm và góc xoay (Y hệt code C++ của bạn)
         src_eye_x = (eye_l[0] + eye_r[0]) / 2.0
         src_eye_y = (eye_l[1] + eye_r[1]) / 2.0
         dx, dy = eye_r[0] - eye_l[0], eye_r[1] - eye_l[1]
         src_dist = np.sqrt(dx * dx + dy * dy)
         src_angle = np.arctan2(dy, dx)
 
-        # Tọa độ đích (Lấy từ bộ REF_X, REF_Y của bạn)
-        # REF_X[0]=38.2946, REF_X[1]=73.5318, REF_Y[0]=51.6963
         dst_eye_x = (38.2946 + 73.5318) / 2.0
         dst_eye_y = 51.6963
         dst_dist = 73.5318 - 38.2946
 
-        # Tính toán ma trận
         scale = dst_dist / src_dist if src_dist > 0 else 1.0
-        angle_diff = 0.0 - src_angle  # dst_angle luôn = 0 trong code C++
+        angle_diff = 0.0 - src_angle
         cosR, sinR = np.cos(angle_diff) * scale, np.sin(angle_diff) * scale
 
         tx = dst_eye_x - (src_eye_x * cosR - src_eye_y * sinR)
         ty = dst_eye_y - (src_eye_x * sinR + src_eye_y * cosR)
 
-        # Ma trận nghịch đảo (Inverse Mapping)
         det = cosR * cosR + sinR * sinR
         idet = 1.0 / det if det != 0 else 1.0
         A, B, C = cosR * idet, sinR * idet, (-sinR * ty - cosR * tx) * idet
         D, E, F = -sinR * idet, cosR * idet, (sinR * tx - cosR * ty) * idet
 
-        # 4. Warp & Normalize thủ công (Mô phỏng (int)srcX của C++)
         targetSize = 112
         y_coords, x_coords = np.mgrid[0:targetSize, 0:targetSize]
 
@@ -226,7 +273,6 @@ class FaceEmbedderTFLite:
 
         aligned_face = img_rgb[srcY, srcX]
 
-        # 5. Normalize (-1.0 -> 1.0) y hệt C++: (val - 127.5) / 128.0
         img_array = (aligned_face.astype(np.float32) - 127.5) / 128.0
         return np.expand_dims(img_array, axis=0)
 

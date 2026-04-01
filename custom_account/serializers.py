@@ -1,7 +1,8 @@
 from rest_framework import serializers
 
 from custom_account.domains.user_domain import UserDomain
-from custom_account.models import BiometricCredential, Profile, UserModel
+from custom_account.models import Profile, UserModel
+from offline_sync.models import BiometricCredential
 
 
 class RegisterSerializer(serializers.Serializer):

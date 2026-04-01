@@ -1,8 +1,7 @@
 from django.contrib import admin
 
-from custom_account.services.user_service import soft_delete_user
 from custom_account.models import UserModel
-
+from custom_account.services.user_service import soft_delete_user
 
 
 @admin.register(UserModel)

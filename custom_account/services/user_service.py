@@ -11,11 +11,11 @@ from core.exceptions import DomainError, UserNotFoundError
 from custom_account.api.dtos.user_dto import UserInput
 from custom_account.domains.user_domain import UserDomain
 from custom_account.models import (
-    BiometricCredential,
     Profile,
     StudentProfile,
     UserModel,
 )
+from offline_sync.models import BiometricCredential
 from utils.profiler import TimeProfiler
 
 logger = logging.getLogger(__name__)
